@@ -41,7 +41,7 @@
 // 4096 * 90 / 12 = 30720
 #define STEPS_PER_ROTATION 30745 //  adjusted steps for a full turn of minute rotor (this was different for me from the original (30720)
 
-#define MY_TZ "CET-1CEST,M3.5.0/02,M10.5.0/03"    // just add the right string for your time zone: https://werner.rothschopf.net/202011_arduino_esp8266_ntp_en.htm
+#define MY_TZ "CST-8"    // just add the right string for your time zone: https://werner.rothschopf.net/202011_arduino_esp8266_ntp_en.htm
 #define MY_NTP_SERVER "pool.ntp.org"
 
 // wait for a single step of stepper
