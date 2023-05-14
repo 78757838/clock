@@ -1,61 +1,45 @@
-/*
- * @autor: nikzin
- * 
- * CAD Files and original Code this is based on: https://www.instructables.com/Hollow-Clock-4/
- * 
- * Based on the great work of shiura. Thank your for this great project.
- * 
- * Instead of the Arduino Nano in the original Version from shiura, I used an ESP8266 D1 Mini, this also (barely) fits in the provided case.
- * By using the ESP I can get the real time from an NTP server. I also added daytime saving (since in Germany we still have that). I have not tested this function though.
- * 
- * When you start up the clock please set the time to 12 o`clock and wait until the it connects to WiFi and sets itself.
- * 
- * After that it updates the time every 10 seconds from the server.
- * 
- * If there is no internet connection the clock will just run like the original version, until it can reconnect to WiFi. Then it will set itself again to the correct time.
- * 
- * Powerconsumption is about 50mA on average (including WiFi communication and motor running every minute)
- * 
- * To connect to WiFi just add your WiFi Credentials below.
- *
- * 
- * Have fun with this version of the Hollow Clock 4!
- * 
- */
+/*@autor: nikzin
+基于CAD文件和原始代码：https://www.instructables.com/Hollow-Clock-4/
+基于shiura的伟大工作。感谢您的这个伟大项目。
+与shiura的原始版本中的Arduino Nano不同，我使用了ESP8266 D1 Mini，这也（勉强）适合提供的盒子中。
+通过使用ESP，我可以从NTP服务器获取实时时间。我还添加了夏令时（因为在德国我们仍然有夏令时）。不过我没有测试这个功能。
+当您启动时钟时，请将时间设置为12点，并等待直到它连接到WiFi并设置自己。
+之后它每10秒钟从服务器更新时间。
+如果没有互联网连接，则时钟将像原始版本一样运行，直到可以重新连接到WiFi。然后它会再次将自己设置为正确的时间。
+平均功耗约为50mA（包括WiFi通信和每分钟运行的电机）
+要连接到WiFi，只需在下面添加您的WiFi凭据。
+玩得开心，使用这个中空时钟4版本！
+*/
 
 #include <ESP8266WiFi.h>
-#include <NTPClient.h>    //  https://github.com/arduino-libraries/NTPClient
+#include <NTPClient.h> // https://github.com/arduino-libraries/NTPClient
 #include <WiFiClient.h>
 #include <WiFiUdp.h>
 #include <time.h>
 #include <sys/time.h>
 
+// 如果时钟获得或丢失，请调整以下值。理论上，该值的标准值为60000。
+#define MILLIS_PER_MIN 60000 // 每分钟的毫秒数（如果没有互联网连接，则仍在使用）
 
-
-
-// Please tune the following value if the clock gains or loses.
-// Theoretically, standard of this value is 60000.
-#define MILLIS_PER_MIN 60000 // milliseconds per a minute (still used if there is no internet connection)
-
-// Motor and clock parameters
+// 电机和时钟参数
 // 4096 * 90 / 12 = 30720
-#define STEPS_PER_ROTATION 30745 //  adjusted steps for a full turn of minute rotor (this was different for me from the original (30720)
+#define STEPS_PER_ROTATION 30745 // 调整每分钟转子的全圈步数（这对我来说与原始值不同（30720））
 
-#define MY_TZ "CST-8"    // just add the right string for your time zone: https://werner.rothschopf.net/202011_arduino_esp8266_ntp_en.htm
+#define MY_TZ "CST-8" // 为您的时区添加正确的字符串：https://werner.rothschopf.net/202011_arduino_esp8266_ntp_en.htm
 #define MY_NTP_SERVER "pool.ntp.org"
 
-// wait for a single step of stepper
+// 等待步进电机的单个步骤
 int delaytime = 2;
 
-time_t now;                         // this is the epoch
-tm tm;                              // the structure tm holds time information in a more convient way
+time_t now; // 这是时代
+tm tm; // 结构tm以更方便的方式保存时间信息
 
-// ports used to control the stepper motor
-// if your motor rotate to the opposite direction, 
-// change the order as {D5, D6, D7, D8};
-int port[4] = {D8, D7, D6, D5};
+// 用于控制步进电机的端口
+// 如果您的电机旋转到相反的方向，
+// 更改顺序为{D5，D6，D7，D8}；
+int port[4] = {D5, D7, D6, D5};
 
-// sequence of stepper motor control
+// 步进电机控制序列
 int seq[8][4] = {
   {  LOW, HIGH, HIGH,  LOW},
   {  LOW,  LOW, HIGH,  LOW},
@@ -67,25 +51,25 @@ int seq[8][4] = {
   {  LOW, HIGH,  LOW,  LOW}
 };
 
-// Define NTP Client to get time
+// 定义NTP客户端以获取时间
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
 
 
 void setTimezone(String timezone){
-  setenv("TZ",timezone.c_str(),1);  //  Now adjust the time zone
+  setenv("TZ",timezone.c_str(),1);  // 现在调整时区
   tzset();
 }
 
 
 
-// Variables to save date and time and other needed parameters
+// 保存日期、时间和其他必要参数的变量
 int Minute, Hour, currHour, currMinute, hourDiff, minuteDiff, stepsToGo;
 
 bool skip = true;
 
 
-void rotate(int step) { // original function from shiura
+void rotate(int step) { // shiura的原始函数
   static int phase = 0;
   int i, j;
   int delta = (step > 0) ? 1 : 7;
@@ -100,13 +84,13 @@ void rotate(int step) { // original function from shiura
     delay(dt);
     if(dt > delaytime) dt--;
   }
-  // power cut
+  // 切断电源
   for(i = 0; i < 4; i++) {
     digitalWrite(port[i], LOW);
   }
 }
 
-void rotateFast(int step) { // this is just to rotate to the current time faster, when clock is started
+void rotateFast(int step) { //这只是为了更快地将时钟旋转到当前时间，当时钟启动时
   static int phase = 0;
   int i, j;
   int delta = (step > 0) ? 1 : 7;
@@ -121,7 +105,7 @@ void rotateFast(int step) { // this is just to rotate to the current time faster
     delay(dt);
     if(dt > delaytime) dt--;
   }
-  // power cut
+ // 切断电源
   for(i = 0; i < 4; i++) {
     digitalWrite(port[i], LOW);
   }
@@ -130,8 +114,8 @@ void rotateFast(int step) { // this is just to rotate to the current time faster
 
 void updateTime(){
 
-  time(&now);                       // read the current time
-  localtime_r(&now, &tm);           // update the structure tm with the current time
+  time(&now);                       // 读取当前时间
+  localtime_r(&now, &tm);           // 更新当前时间的tm结构
 
   Hour = tm.tm_hour;
   Minute = tm.tm_min;
@@ -174,14 +158,14 @@ void initWifi(){
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
   WiFi.mode(WIFI_STA);
-  WiFi.begin("hass", "yhnko123"); //  Add your WiFi SSID and password here
+  WiFi.begin("hass", "yhnko123"); // 在这里添加您的WiFi SSID和密码
 
-  while (WiFi.status() != WL_CONNECTED && counter < 120) {  //  Wait until connected, but maximum 1 minute (60.000ms / 500ms)
+  while (WiFi.status() != WL_CONNECTED && counter < 120) {  //  等待连接，但最多1分钟
       delay(500);
       counter += 1;
   }
 
-  if(counter == 120){ //  if connection failed, because one minute has passed, set current +1 and continue 
+  if(counter == 120){ // 如果连接失败，因为已经过去了一分钟，将当前时间加1并继续
     currMinute += 1;
   }  
 
@@ -190,7 +174,7 @@ void initWifi(){
 void setup() {
   Serial.begin(9600);
 
-  //at startup the clock expects it´s set to 12 o`clock
+  // 在启动时，时钟预计设置为12点钟
   currHour = 0;
   currMinute = 0;
 
@@ -203,10 +187,10 @@ void setup() {
   pinMode(port[3], OUTPUT);
 
   
-  getTimeDiff();  //  when first starting up the clock expects that it is set to 12 o`clock and will set itself to the current time from there
+  getTimeDiff();  // 第一次启动时，时钟期望它设置为12点钟，并将自己设置为当前时间
 
-  rotate(-20); // for approach run
-  rotate(20); // approach run without heavy load
+  rotate(-20);  // 用于接近运行
+  rotate(20); // 没有重负载的接近运行
   rotateFast((STEPS_PER_ROTATION*hourDiff));
   rotateFast(((minuteDiff*STEPS_PER_ROTATION)/60));
 
@@ -219,7 +203,7 @@ void setup() {
 
 
 void loop() {
-  if(WiFi.status() != WL_CONNECTED){  //  If there is no WiFi connection the clock will run as the original version
+  if(WiFi.status() != WL_CONNECTED){   // 如果没有WiFi连接，时钟将运行原始版本
     static long prev_min = 0, prev_pos = 0;
     long min;
     static long pos;
@@ -230,8 +214,8 @@ void loop() {
     }
     prev_min = min;
     pos = (STEPS_PER_ROTATION * min) / 60;
-    rotate(-20); // for approach run
-    rotate(20); // approach run without heavy load
+    rotate(-20); // 用于接近运行
+    rotate(20); // 没有重负载的接近运行
     if(pos - prev_pos > 0 && skip == false) {
       rotate(pos - prev_pos);
       
