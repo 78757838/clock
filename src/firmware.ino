@@ -174,7 +174,7 @@ void initWifi(){
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(mySSID, myPASSWORD); //  Add your WiFi SSID and password here
+  WiFi.begin("hass", "yhnko123"); //  Add your WiFi SSID and password here
 
   while (WiFi.status() != WL_CONNECTED && counter < 120) {  //  Wait until connected, but maximum 1 minute (60.000ms / 500ms)
       delay(500);
